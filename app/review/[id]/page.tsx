@@ -13,24 +13,15 @@ export default function ReviewPage() {
 
   useEffect(() => {
     const loadTranscript = async () => {
-      const { data, error } = await supabase
-        .from('journal_transcripts')
-        .select('id, raw_ocr_text, confirmed_text, is_confirmed, created_at')
-        .eq('entry_id', entryId)
-        .order('created_at', { ascending: true })
-        .limit(1)
+      const res = await fetch(`/api/transcript/${entryId}`)
+      const data = await res.json()
 
-      if (error) {
-        setMessage(error.message)
+      if (!res.ok) {
+        setMessage(data.error || 'Could not load transcript.')
         return
       }
 
-      if (!data || data.length === 0) {
-        setMessage('No transcript found for this entry.')
-        return
-      }
-
-      const row = data[0]
+      const row = data.transcript
       setText(row.confirmed_text || row.raw_ocr_text || '')
       setMessage('')
     }
@@ -53,7 +44,22 @@ export default function ReviewPage() {
       return
     }
 
-    setMessage('Transcript confirmed and saved.')
+    setMessage('Generating reflection...')
+
+    const res = await fetch('/api/reflect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entryId }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      setMessage(data.error || 'Reflection failed.')
+      return
+    }
+
+    window.location.href = `/reflection/${entryId}`
   }
 
   return (
