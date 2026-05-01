@@ -82,21 +82,39 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-xl mx-auto space-y-4">
-        <h1 className="text-2xl font-semibold">Upload Journal</h1>
-        <p className="text-sm text-stone-600">
-          Upload one or more images from the same journal entry.
+    <main className="min-h-screen bg-stone-50 p-8 text-stone-900">
+      <div className="mx-auto max-w-xl space-y-6 rounded-2xl border bg-white p-8 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold">Upload Journal</h1>
+
+          <a
+            href="/profile"
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-stone-50"
+          >
+            Profile / Downloads
+          </a>
+        </div>
+
+        <p className="text-sm leading-6 text-stone-600">
+          Upload one or more images from the same journal entry. The AI will
+          read them, create a transcript, and then guide you to review it before
+          generating a reflection.
         </p>
 
-        <input
-          type="file"
-          multiple
-          accept="image/*,application/pdf"
-          onChange={handleUpload}
-        />
+        <div className="rounded-xl border border-dashed p-6">
+          <input
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            onChange={handleUpload}
+          />
+        </div>
 
-        {message && <p>{message}</p>}
+        {message && (
+          <p className="rounded-lg bg-stone-100 p-3 text-sm text-stone-700">
+            {message}
+          </p>
+        )}
       </div>
     </main>
   )
