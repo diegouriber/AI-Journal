@@ -30,6 +30,8 @@ export default function ReviewPage() {
   }, [entryId])
 
   const handleConfirm = async () => {
+    console.log('CLICKED')
+
     const { error } = await supabase
       .from('journal_transcripts')
       .update({
@@ -39,10 +41,14 @@ export default function ReviewPage() {
       })
       .eq('entry_id', entryId)
 
+    console.log('UPDATE RESULT:', error)
+
     if (error) {
       setMessage(error.message)
       return
     }
+
+    console.log('GOING TO REFLECT')
 
     setMessage('Generating reflection...')
 
@@ -52,7 +58,11 @@ export default function ReviewPage() {
       body: JSON.stringify({ entryId }),
     })
 
+    console.log('REFLECT STATUS:', res.status)
+
     const data = await res.json()
+
+    console.log('REFLECT DATA:', data)
 
     if (!res.ok) {
       setMessage(data.error || 'Reflection failed.')
