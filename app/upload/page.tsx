@@ -7,6 +7,7 @@ export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([])
   const [message, setMessage] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
 
   const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
@@ -14,8 +15,6 @@ export default function UploadPage() {
     if (selectedFiles.length === 0) return
 
     setFiles((prev) => [...prev, ...selectedFiles])
-
-    // allows selecting the same file again if needed
     e.target.value = ''
   }
 
@@ -23,28 +22,34 @@ export default function UploadPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const moveFileUp = (index: number) => {
-    if (index === 0) return
+  const moveFile = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
 
     setFiles((prev) => {
-      const newFiles = [...prev]
-      const temp = newFiles[index - 1]
-      newFiles[index - 1] = newFiles[index]
-      newFiles[index] = temp
-      return newFiles
+      const updated = [...prev]
+      const [movedFile] = updated.splice(fromIndex, 1)
+      updated.splice(toIndex, 0, movedFile)
+      return updated
     })
   }
 
-  const moveFileDown = (index: number) => {
-    if (index === files.length - 1) return
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
 
-    setFiles((prev) => {
-      const newFiles = [...prev]
-      const temp = newFiles[index + 1]
-      newFiles[index + 1] = newFiles[index]
-      newFiles[index] = temp
-      return newFiles
-    })
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (dropIndex: number) => {
+    if (draggedIndex === null) return
+
+    moveFile(draggedIndex, dropIndex)
+    setDraggedIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
   }
 
   const handleSubmit = async () => {
@@ -151,8 +156,8 @@ export default function UploadPage() {
 
         <p className="text-sm leading-6 text-stone-600">
           Add your journal pages in the order they should be read. You can add
-          files one by one or select multiple at once, then review the order
-          before submitting.
+          files one by one or select multiple at once, then drag them into the
+          correct order before submitting.
         </p>
 
         <div className="rounded-xl border border-dashed p-6">
@@ -178,45 +183,40 @@ export default function UploadPage() {
               {files.map((file, index) => (
                 <div
                   key={`${file.name}-${index}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                  draggable={!uploading}
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(index)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex cursor-move items-center justify-between gap-3 rounded-lg border p-3 transition ${
+                    draggedIndex === index
+                      ? 'border-stone-900 bg-stone-100 opacity-60'
+                      : 'bg-white hover:bg-stone-50'
+                  }`}
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      Page {index + 1}
-                    </p>
-                    <p className="truncate text-sm text-stone-600">
-                      {file.name}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="rounded-md border bg-stone-50 px-2 py-1 text-xs text-stone-500">
+                      Drag
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        Page {index + 1}
+                      </p>
+                      <p className="truncate text-sm text-stone-600">
+                        {file.name}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => moveFileUp(index)}
-                      disabled={index === 0 || uploading}
-                      className="rounded border px-2 py-1 text-xs disabled:opacity-40"
-                    >
-                      Up
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => moveFileDown(index)}
-                      disabled={index === files.length - 1 || uploading}
-                      className="rounded border px-2 py-1 text-xs disabled:opacity-40"
-                    >
-                      Down
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      disabled={uploading}
-                      className="rounded border px-2 py-1 text-xs text-red-700 disabled:opacity-40"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    disabled={uploading}
+                    className="rounded border px-2 py-1 text-xs text-red-700 disabled:opacity-40"
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>
