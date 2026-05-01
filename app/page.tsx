@@ -1,12 +1,49 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+
+const TEN_MINUTES = 10 * 60 * 1000
 
 export default function Home() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState('Checking session...')
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      const lastLogin = localStorage.getItem('last_login_at')
+      const now = Date.now()
+
+      if (session && lastLogin) {
+        const elapsed = now - Number(lastLogin)
+
+        if (elapsed < TEN_MINUTES) {
+          window.location.href = '/upload'
+          return
+        }
+
+        await supabase.auth.signOut()
+        localStorage.removeItem('last_login_at')
+        setMessage('Session expired. Please sign in again.')
+        return
+      }
+
+      if (session && !lastLogin) {
+        localStorage.setItem('last_login_at', String(now))
+        window.location.href = '/upload'
+        return
+      }
+
+      setMessage('')
+    }
+
+    checkSession()
+  }, [])
 
   const signUp = async () => {
     const { error } = await supabase.auth.signUp({
@@ -16,9 +53,11 @@ export default function Home() {
 
     if (error) {
       setMessage(error.message)
-    } else {
-      setMessage('Account created. Now sign in.')
+      return
     }
+
+    localStorage.setItem('last_login_at', String(Date.now()))
+    setMessage('Account created. Now sign in.')
   }
 
   const signIn = async () => {
@@ -29,18 +68,20 @@ export default function Home() {
 
     if (error) {
       setMessage(error.message)
-    } else {
-      setMessage('Signed in successfully.')
-      window.location.href = '/upload'
+      return
     }
+
+    localStorage.setItem('last_login_at', String(Date.now()))
+    window.location.href = '/upload'
   }
 
   return (
     <main className="min-h-screen bg-stone-50 text-stone-900 flex items-center justify-center p-8">
       <div className="w-full max-w-md space-y-4 rounded-2xl border bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold">AI Journaling Tool</h1>
+
         <p className="text-sm text-stone-600">
-          Create an account or sign in.
+          Sign in to continue your journal archive.
         </p>
 
         <input
