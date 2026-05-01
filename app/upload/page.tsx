@@ -22,6 +22,10 @@ export default function UploadPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const reverseFiles = () => {
+    setFiles((prev) => [...prev].reverse())
+  }
+
   const moveFile = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return
 
@@ -177,7 +181,18 @@ export default function UploadPage() {
 
         {files.length > 0 && (
           <div className="space-y-3">
-            <h2 className="font-semibold">Files uploaded in order</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold">Files uploaded in order</h2>
+
+              <button
+                type="button"
+                onClick={reverseFiles}
+                disabled={uploading || files.length < 2}
+                className="rounded-lg border px-3 py-2 text-sm hover:bg-stone-50 disabled:opacity-40"
+              >
+                Reverse order
+              </button>
+            </div>
 
             <div className="space-y-2">
               {files.map((file, index) => (
@@ -200,9 +215,7 @@ export default function UploadPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">
-                        Page {index + 1}
-                      </p>
+                      <p className="text-sm font-medium">Page {index + 1}</p>
                       <p className="truncate text-sm text-stone-600">
                         {file.name}
                       </p>
