@@ -3,15 +3,15 @@ import { supabaseAdmin } from '../../../../lib/supabase-admin'
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const entryId = params.id
+    const { id } = await params
 
     const { data, error } = await supabaseAdmin
       .from('journal_reflections')
       .select('content, created_at')
-      .eq('entry_id', entryId)
+      .eq('entry_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
 
