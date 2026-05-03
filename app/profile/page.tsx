@@ -1,14 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function ProfilePage() {
   const [message, setMessage] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [firstName, setFirstName] = useState('there')
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user?.email) {
+        const name = user.email.split('@')[0].split('.')[0]
+        setFirstName(name.charAt(0).toUpperCase() + name.slice(1))
+      }
+    }
+
+    loadUser()
+  }, [])
 
   const downloadFile = async (url: string, filename: string) => {
-    setMessage('Preparing download...')
+    setMessage('Preparing your file...')
 
     const {
       data: { session },
@@ -85,41 +101,122 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-8 text-stone-900">
-      <div className="mx-auto max-w-3xl space-y-6 rounded-2xl border bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold">User Profile</h1>
+    <main className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-stone-100 p-6 text-stone-900">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-3xl border border-stone-200 bg-white/85 p-8 shadow-sm backdrop-blur">
+          <p className="text-sm uppercase tracking-[0.25em] text-stone-500">
+            Personal Archive
+          </p>
 
-        <p className="text-sm leading-6 text-stone-600">
-          Download your accumulated raw journal archive and the decision
-          principles extracted from your entries.
-        </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+            Hi {firstName}, this is where your thinking accumulates.
+          </h1>
 
-        <div className="space-y-3">
-          <button
-            onClick={() =>
-              downloadFile('/api/export/archive', 'raw-journal-archive.docx')
-            }
-            className="w-full rounded-lg bg-stone-900 px-4 py-3 text-white"
-          >
-            Download Raw Journal Archive (.docx)
-          </button>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
+            Your raw entries are preserved as an archive. Your principles are
+            extracted as a living decision framework. This page is where your
+            writing becomes something you can revisit, export, and build from.
+          </p>
 
-          <button
-            onClick={() =>
-              downloadFile(
-                '/api/export/principles',
-                'decision-principles.xlsx'
-              )
-            }
-            className="w-full rounded-lg border px-4 py-3"
-          >
-            Download Decision Principles (.xlsx)
-          </button>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="/upload"
+              className="rounded-full bg-stone-900 px-5 py-3 text-sm text-white hover:bg-stone-800"
+            >
+              Upload new entry
+            </a>
+
+            <a
+              href="/"
+              className="rounded-full border px-5 py-3 text-sm hover:bg-stone-50"
+            >
+              Back to home
+            </a>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+        <section className="grid gap-6 md:grid-cols-2">
+          <div className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-900 text-white">
+              W
+            </div>
+
+            <h2 className="mt-5 text-xl font-semibold">
+              Raw Journal Archive
+            </h2>
+
+            <p className="mt-3 text-sm leading-7 text-stone-600">
+              Download the full raw archive of your journal entries as a Word
+              document. This is the source material: your actual writing,
+              preserved chronologically.
+            </p>
+
+            <button
+              onClick={() =>
+                downloadFile('/api/export/archive', 'raw-journal-archive.docx')
+              }
+              className="mt-6 w-full rounded-2xl bg-stone-900 px-4 py-3 text-white hover:bg-stone-800"
+            >
+              Download Word Archive
+            </button>
+          </div>
+
+          <div className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-200 text-stone-900">
+              X
+            </div>
+
+            <h2 className="mt-5 text-xl font-semibold">
+              Decision Principles
+            </h2>
+
+            <p className="mt-3 text-sm leading-7 text-stone-600">
+              Download the principles extracted from your entries as an Excel
+              file. These are the values, rules, tensions, and decision patterns
+              that begin to form your personal framework.
+            </p>
+
+            <button
+              onClick={() =>
+                downloadFile(
+                  '/api/export/principles',
+                  'decision-principles.xlsx'
+                )
+              }
+              className="mt-6 w-full rounded-2xl border px-4 py-3 hover:bg-stone-50"
+            >
+              Download Principles Excel
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-stone-200 bg-stone-900 p-8 text-white shadow-sm">
+          <p className="text-sm uppercase tracking-[0.25em] text-stone-400">
+            What this profile is for
+          </p>
+
+          <div className="mt-5 grid gap-5 text-sm leading-7 text-stone-200 md:grid-cols-3">
+            <p>
+              To preserve what you actually wrote, not just what you remember
+              writing.
+            </p>
+
+            <p>
+              To help identify patterns that repeat across entries and slowly
+              become part of your self-knowledge.
+            </p>
+
+            <p>
+              To turn reflection into something practical: principles that can
+              guide future decisions.
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-red-200 bg-red-50 p-6">
           <h2 className="font-semibold text-red-900">Danger zone</h2>
-          <p className="mt-1 text-sm text-red-800">
+
+          <p className="mt-2 text-sm leading-6 text-red-800">
             Delete your saved journal archive, reflections, profile signals, and
             decision principles. This action cannot be undone.
           </p>
@@ -127,17 +224,17 @@ export default function ProfilePage() {
           <button
             onClick={deleteProfileData}
             disabled={deleting}
-            className="mt-4 rounded-lg bg-red-700 px-4 py-3 text-white disabled:opacity-50"
+            className="mt-5 rounded-2xl bg-red-700 px-5 py-3 text-white hover:bg-red-800 disabled:opacity-50"
           >
             {deleting ? 'Deleting...' : 'Delete Archive and Principles'}
           </button>
-        </div>
+        </section>
 
-        {message && <p className="text-sm text-stone-600">{message}</p>}
-
-        <a href="/upload" className="inline-block text-sm underline">
-          Upload another entry
-        </a>
+        {message && (
+          <p className="rounded-2xl bg-white/85 p-4 text-sm text-stone-700 shadow-sm">
+            {message}
+          </p>
+        )}
       </div>
     </main>
   )
