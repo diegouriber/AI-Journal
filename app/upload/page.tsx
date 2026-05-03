@@ -1,40 +1,50 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 type Mode = 'write' | 'upload'
 
 type UploadItem = {
-  id: string
   file: File
   previewUrl: string | null
 }
 
-function isImage(file: File) {
-  return file.type.startsWith('image/')
-}
-
-function createUploadItem(file: File): UploadItem {
-  return {
-    id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-    file,
-    previewUrl: isImage(file) ? URL.createObjectURL(file) : null,
-  }
-}
-
 export default function UploadPage() {
-  const router = useRouter()
-
   const [mode, setMode] = useState<Mode>('write')
   const [title, setTitle] = useState('')
   const [entryText, setEntryText] = useState('')
   const [files, setFiles] = useState<UploadItem[]>([])
-  const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [isDraggingOver, setIsDraggingOver] = useState(false)
   const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const [firstName, setFirstName] = useState('there')
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user?.email) {
+        const name = user.email.split('@')[0].split(/[._-]/)[0]
+        setFirstName(name.charAt(0).toUpperCase() + name.slice(1))
+      }
+    }
+
+    loadUser()
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      files.forEach((item) => {
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl)
+        }
+      })
+    }
+  }, [files])
 
   const wordCount = useMemo(() => {
     return entryText.trim() ? entryText.trim().split(/\s+/).length : 0
@@ -54,26 +64,38 @@ export default function UploadPage() {
   }, [])
 
   const addFiles = (incomingFiles: FileList | File[]) => {
-    const nextFiles = Array.from(incomingFiles).map(createUploadItem)
-    setFiles((prev) => [...prev, ...nextFiles])
+    const selectedFiles = Array.from(incomingFiles)
+
+    if (selectedFiles.length === 0) return
+
+    const newFiles = selectedFiles.map((file) => ({
+      file,
+      previewUrl: file.type.startsWith('image/')
+        ? URL.createObjectURL(file)
+        : null,
+    }))
+
+    setFiles((prev) => [...prev, ...newFiles])
     setMessage('')
   }
 
-  const removeFile = (id: string) => {
+  const removeFile = (index: number) => {
     setFiles((prev) => {
-      const target = prev.find((item) => item.id === id)
+      const itemToRemove = prev[index]
 
-      if (target?.previewUrl) {
-        URL.revokeObjectURL(target.previewUrl)
+      if (itemToRemove?.previewUrl) {
+        URL.revokeObjectURL(itemToRemove.previewUrl)
       }
 
-      return prev.filter((item) => item.id !== id)
+      return prev.filter((_, i) => i !== index)
     })
   }
 
   const clearFiles = () => {
     files.forEach((item) => {
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      if (item.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl)
+      }
     })
 
     setFiles([])
@@ -83,118 +105,193 @@ export default function UploadPage() {
     setFiles((prev) => [...prev].reverse())
   }
 
-  const moveFile = (dragId: string, targetId: string) => {
-    if (dragId === targetId) return
+  const moveFile = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
 
     setFiles((prev) => {
-      const dragIndex = prev.findIndex((item) => item.id === dragId)
-      const targetIndex = prev.findIndex((item) => item.id === targetId)
-
-      if (dragIndex === -1 || targetIndex === -1) return prev
-
-      const next = [...prev]
-      const [draggedItem] = next.splice(dragIndex, 1)
-      next.splice(targetIndex, 0, draggedItem)
-
-      return next
+      const updated = [...prev]
+      const [movedFile] = updated.splice(fromIndex, 1)
+      updated.splice(toIndex, 0, movedFile)
+      return updated
     })
   }
 
-  const handleSubmit = async () => {
-    setLoading(true)
-    setMessage('')
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
 
-    if (!session?.access_token) {
-      setMessage('You must be signed in first.')
-      setLoading(false)
+  const handleDrop = (dropIndex: number) => {
+    if (draggedIndex === null) return
+
+    moveFile(draggedIndex, dropIndex)
+    setDraggedIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+  }
+
+  const handleWriteSubmit = async () => {
+    if (!entryText.trim()) {
+      setMessage('Write something first. Even one honest sentence is enough.')
       return
     }
 
-    const formData = new FormData()
+    setUploading(true)
+    setMessage('Saving your entry...')
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      setMessage('You must be signed in first.')
+      setUploading(false)
+      return
+    }
+
+    const { data: entry, error: entryError } = await supabase
+      .from('journal_entries')
+      .insert({
+        user_id: user.id,
+        source_type: 'text',
+        status: 'transcribed',
+      })
+      .select()
+      .single()
+
+    if (entryError || !entry) {
+      setMessage(entryError?.message || 'Could not create journal entry.')
+      setUploading(false)
+      return
+    }
+
+    const fullText = title.trim()
+      ? `${title.trim()}\n\n${entryText.trim()}`
+      : entryText.trim()
+
+    const { error: transcriptError } = await supabase
+      .from('journal_transcripts')
+      .insert({
+        entry_id: entry.id,
+        raw_ocr_text: fullText,
+        is_confirmed: false,
+      })
+
+    if (transcriptError) {
+      setMessage(transcriptError.message)
+      setUploading(false)
+      return
+    }
+
+    window.location.href = `/review/${entry.id}`
+  }
+
+  const handleUploadSubmit = async () => {
+    if (files.length === 0) {
+      setMessage('Add at least one page before submitting your entry.')
+      return
+    }
+
+    setUploading(true)
+    setMessage('Creating space for this entry...')
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      setMessage('You must be signed in first.')
+      setUploading(false)
+      return
+    }
+
+    const { data: entry, error: entryError } = await supabase
+      .from('journal_entries')
+      .insert({
+        user_id: user.id,
+        source_type: 'image',
+        status: 'uploaded',
+      })
+      .select()
+      .single()
+
+    if (entryError || !entry) {
+      setMessage(entryError?.message || 'Could not create journal entry.')
+      setUploading(false)
+      return
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i].file
+
+      setMessage(`Saving page ${i + 1} of ${files.length}...`)
+
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+      const filePath = `${user.id}/${entry.id}/${i + 1}-${Date.now()}-${cleanName}`
+
+      const { error: storageError } = await supabase.storage
+        .from('journal-uploads')
+        .upload(filePath, file)
+
+      if (storageError) {
+        setMessage(storageError.message)
+        setUploading(false)
+        return
+      }
+
+      const { error: uploadRowError } = await supabase
+        .from('journal_uploads')
+        .insert({
+          entry_id: entry.id,
+          file_path: filePath,
+          page_order: i + 1,
+          mime_type: file.type,
+        })
+
+      if (uploadRowError) {
+        setMessage(uploadRowError.message)
+        setUploading(false)
+        return
+      }
+    }
+
+    setMessage('Reading your pages carefully...')
+
+    const res = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ entryId: entry.id }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      setMessage(data.error || 'OCR failed.')
+      setUploading(false)
+      return
+    }
+
+    window.location.href = `/review/${entry.id}`
+  }
+
+  const handleSubmit = async () => {
+    if (uploading) return
 
     if (mode === 'write') {
-      if (!entryText.trim()) {
-        setMessage('Write something first. Even one honest sentence is enough.')
-        setLoading(false)
-        return
-      }
-
-      const safeTitle =
-        title.trim().replace(/[^a-zA-Z0-9-_ ]/g, '') || 'journal-entry'
-
-      const textFile = new File([entryText], `${safeTitle}.txt`, {
-        type: 'text/plain',
-      })
-
-      /*
-        IMPORTANT:
-        Your backend originally worked with the field name "file".
-        We also include "files" for multi-file compatibility.
-      */
-      formData.append('file', textFile)
-      formData.append('files', textFile)
-      formData.append('typed_entry', 'true')
-      formData.append('entry_title', title.trim())
+      await handleWriteSubmit()
+      return
     }
 
-    if (mode === 'upload') {
-      if (files.length === 0) {
-        setMessage('Choose at least one file first.')
-        setLoading(false)
-        return
-      }
-
-      /*
-        IMPORTANT:
-        We send BOTH "file" and "files".
-        This preserves the old working backend behavior while still supporting
-        the new multi-file UI.
-      */
-      files.forEach((item) => {
-        formData.append('file', item.file)
-        formData.append('files', item.file)
-      })
-
-      formData.append('file_count', String(files.length))
-      formData.append('entry_title', title.trim())
-    }
-
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: formData,
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        console.error('Upload API error:', data)
-        setMessage(data.error || 'Something went wrong.')
-        setLoading(false)
-        return
-      }
-
-      setMessage('Entry saved.')
-
-      if (data.entryId) {
-        router.push(`/review/${data.entryId}`)
-        return
-      }
-
-      router.push('/profile')
-    } catch (error) {
-      console.error('Upload failed:', error)
-      setMessage('Something went wrong while saving your entry.')
-    }
-
-    setLoading(false)
+    await handleUploadSubmit()
   }
 
   return (
@@ -224,9 +321,9 @@ export default function UploadPage() {
               </p>
 
               <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-                Take a moment.
+                Hi {firstName},
                 <br />
-                Put it somewhere.
+                take a moment.
               </h1>
 
               <p className="mt-5 text-base leading-8 text-stone-600">
@@ -277,7 +374,9 @@ export default function UploadPage() {
 
               <div className="inline-flex w-full rounded-full border border-stone-200 bg-stone-50 p-1 md:w-auto">
                 <button
+                  type="button"
                   onClick={() => setMode('write')}
+                  disabled={uploading}
                   className={`flex-1 rounded-full px-5 py-3 text-sm font-medium transition md:flex-none ${
                     mode === 'write'
                       ? 'bg-white text-stone-900 shadow-sm'
@@ -288,7 +387,9 @@ export default function UploadPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setMode('upload')}
+                  disabled={uploading}
                   className={`flex-1 rounded-full px-5 py-3 text-sm font-medium transition md:flex-none ${
                     mode === 'upload'
                       ? 'bg-white text-stone-900 shadow-sm'
@@ -309,10 +410,11 @@ export default function UploadPage() {
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  disabled={uploading}
                   placeholder={
                     mode === 'write' ? 'A quiet thought' : 'Pages from today'
                   }
-                  className="mt-3 w-full border-none bg-transparent text-3xl font-semibold tracking-tight text-stone-900 outline-none placeholder:text-stone-300"
+                  className="mt-3 w-full border-none bg-transparent text-3xl font-semibold tracking-tight text-stone-900 outline-none placeholder:text-stone-300 disabled:opacity-60"
                 />
               </label>
             </div>
@@ -335,8 +437,9 @@ export default function UploadPage() {
                   <textarea
                     value={entryText}
                     onChange={(e) => setEntryText(e.target.value)}
+                    disabled={uploading}
                     placeholder="Start with the thing you keep circling around..."
-                    className="min-h-[520px] w-full resize-none rounded-[2rem] border border-stone-100 bg-[#fbfaf7] px-6 py-6 text-[17px] leading-9 text-stone-800 outline-none transition placeholder:text-stone-300 focus:border-stone-300"
+                    className="min-h-[520px] w-full resize-none rounded-[2rem] border border-stone-100 bg-[#fbfaf7] px-6 py-6 text-[17px] leading-9 text-stone-800 outline-none transition placeholder:text-stone-300 focus:border-stone-300 disabled:opacity-60"
                   />
                 </label>
 
@@ -353,12 +456,14 @@ export default function UploadPage() {
                 <div
                   onDragOver={(e) => {
                     e.preventDefault()
-                    setIsDraggingOver(true)
+                    if (!uploading) setIsDraggingOver(true)
                   }}
                   onDragLeave={() => setIsDraggingOver(false)}
                   onDrop={(e) => {
                     e.preventDefault()
                     setIsDraggingOver(false)
+
+                    if (uploading) return
 
                     if (e.dataTransfer.files?.length) {
                       addFiles(e.dataTransfer.files)
@@ -388,6 +493,7 @@ export default function UploadPage() {
                     <input
                       type="file"
                       multiple
+                      disabled={uploading}
                       accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
                       onChange={(e) => {
                         if (e.target.files?.length) {
@@ -395,60 +501,71 @@ export default function UploadPage() {
                           e.target.value = ''
                         }
                       }}
-                      className="w-full text-sm text-stone-600 file:mr-4 file:rounded-full file:border-0 file:bg-stone-900 file:px-4 file:py-2 file:text-sm file:text-white"
+                      className="w-full text-sm text-stone-600 file:mr-4 file:rounded-full file:border-0 file:bg-stone-900 file:px-4 file:py-2 file:text-sm file:text-white disabled:opacity-60"
                     />
                   </div>
                 </div>
 
-                {files.length > 0 && (
-                  <div className="mt-7">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-stone-700">
-                          Selected pages
-                        </p>
-                        <p className="mt-1 text-sm text-stone-400">
-                          Drag to reorder. The order below is the order sent to
-                          the archive.
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={reverseFiles}
-                          className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 transition hover:bg-stone-50"
-                        >
-                          Reverse order
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={clearFiles}
-                          className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
-                        >
-                          Clear
-                        </button>
-                      </div>
+                <div className="mt-7">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-stone-700">
+                        Selected pages
+                      </p>
+                      <p className="mt-1 text-sm text-stone-400">
+                        Drag to reorder. The order below is the order sent to
+                        the archive.
+                      </p>
                     </div>
 
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={reverseFiles}
+                        disabled={uploading || files.length === 0}
+                        className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 transition hover:bg-stone-50 disabled:opacity-40"
+                      >
+                        Reverse order
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={clearFiles}
+                        disabled={uploading || files.length === 0}
+                        className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-40"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+
+                  {files.length === 0 ? (
+                    <div className="mt-5 rounded-[1.5rem] border border-stone-200 bg-stone-50 p-8 text-center">
+                      <p className="text-sm text-stone-500">
+                        No pages selected yet.
+                      </p>
+                      <p className="mt-2 text-sm text-stone-400">
+                        Once you choose images, they will appear here as preview
+                        cards.
+                      </p>
+                    </div>
+                  ) : (
                     <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {files.map((item, index) => (
                         <div
-                          key={item.id}
-                          draggable
-                          onDragStart={() => setDraggedId(item.id)}
-                          onDragEnd={() => setDraggedId(null)}
-                          onDragOver={(e) => {
-                            e.preventDefault()
-
-                            if (draggedId) {
-                              moveFile(draggedId, item.id)
-                            }
-                          }}
-                          className={`group cursor-grab rounded-[1.5rem] border bg-white p-3 shadow-sm transition active:cursor-grabbing ${
-                            draggedId === item.id
-                              ? 'border-stone-700 opacity-60'
+                          key={`${item.file.name}-${item.file.size}-${item.file.lastModified}-${index}`}
+                          draggable={!uploading}
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(index)}
+                          onDragEnd={handleDragEnd}
+                          className={`group overflow-hidden rounded-[1.5rem] border bg-white p-3 shadow-sm transition ${
+                            uploading
+                              ? 'cursor-default opacity-70'
+                              : 'cursor-grab active:cursor-grabbing'
+                          } ${
+                            draggedIndex === index
+                              ? 'border-stone-700 bg-stone-50 opacity-60'
                               : 'border-stone-200 hover:border-stone-400'
                           }`}
                         >
@@ -473,13 +590,14 @@ export default function UploadPage() {
                             )}
 
                             <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-stone-700 shadow-sm">
-                              {index + 1}
+                              Page {index + 1}
                             </div>
 
                             <button
                               type="button"
-                              onClick={() => removeFile(item.id)}
-                              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-stone-700 opacity-100 shadow-sm transition hover:bg-red-50 hover:text-red-700 md:opacity-0 md:group-hover:opacity-100"
+                              onClick={() => removeFile(index)}
+                              disabled={uploading}
+                              className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-stone-700 opacity-100 shadow-sm transition hover:bg-red-50 hover:text-red-700 disabled:opacity-40 md:opacity-0 md:group-hover:opacity-100"
                             >
                               Remove
                             </button>
@@ -497,8 +615,8 @@ export default function UploadPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
                   <div className="rounded-[1.5rem] bg-stone-50 p-5">
@@ -534,10 +652,10 @@ export default function UploadPage() {
             <div className="mt-8 flex flex-col gap-4 border-t border-stone-100 pt-6 md:flex-row md:items-center md:justify-between">
               <div className="text-sm leading-6 text-stone-500">
                 {mode === 'write'
-                  ? 'When you are ready, save the entry and let the reflection begin.'
+                  ? 'When you are ready, save the entry and review it before reflection.'
                   : files.length > 0
-                  ? `${files.length} file${files.length === 1 ? '' : 's'} ready.`
-                  : 'Upload one page or a full set of pages.'}
+                    ? `${files.length} file${files.length === 1 ? '' : 's'} ready.`
+                    : 'Upload one page or a full set of pages.'}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -551,14 +669,18 @@ export default function UploadPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={loading}
+                  disabled={uploading}
                   className="rounded-full bg-stone-900 px-7 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-50"
                 >
-                  {loading
-                    ? 'Saving...'
+                  {uploading
+                    ? 'Processing...'
                     : mode === 'write'
-                    ? 'Save entry'
-                    : 'Upload entry'}
+                      ? 'Save entry'
+                      : files.length === 0
+                        ? 'Add pages to begin'
+                        : `Submit ${files.length} page${
+                            files.length === 1 ? '' : 's'
+                          }`}
                 </button>
               </div>
             </div>
