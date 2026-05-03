@@ -108,6 +108,14 @@ export async function POST(req: Request) {
 
     const openingReflection = reflectionRows?.[0]?.content || ''
 
+    const { data: userProfile } = await supabaseAdmin
+      .from('user_profiles')
+      .select(
+        'display_name, birthday, values_text, life_direction, self_understanding_goal'
+      )
+      .eq('user_id', user.id)
+      .maybeSingle()
+
     const { data: previousMessages } = await supabaseAdmin
       .from('reflection_messages')
       .select('role, content, created_at')
@@ -148,6 +156,13 @@ You are not writing a report.
 You are having an introspective conversation with the user.
 
 Your role is to help the user understand their own writing more deeply.
+You have access to:
+- the new journal entry
+- the opening reflection
+- the user's self-described profile
+- previous profile signals
+- previous decision principles
+- this reflection's conversation history
 
 Do not diagnose.
 Do not overclaim.
@@ -156,13 +171,16 @@ Do not flatter.
 Do not turn everything into bullet points.
 Do not summarize mechanically.
 
-Be thoughtful, direct, human, and slightly provocative when useful.
+Be thoughtful, direct, human, and quietly provocative when useful.
 Ask one strong question when it helps.
 Push gently when there is a contradiction.
 Connect the current entry to previous patterns only when relevant.
 
 The goal is not to summarize the entry.
 The goal is to help the user meet the part of themselves that wrote it.
+
+User-provided profile context:
+${JSON.stringify(userProfile || {}, null, 2)}
 
 Current journal entry:
 ${transcript}

@@ -22,6 +22,7 @@ export default function ReflectionPage() {
   const [input, setInput] = useState('')
   const [status, setStatus] = useState('')
   const [sending, setSending] = useState(false)
+  const [firstName, setFirstName] = useState('there')
 
   useEffect(() => {
     const loadReflection = async () => {
@@ -62,9 +63,30 @@ export default function ReflectionPage() {
       setMessages(data.messages || [])
     }
 
+    const loadProfile = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session?.access_token) return
+
+      const res = await fetch('/api/user-profile', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+
+      const data = await res.json()
+
+      if (data.profile?.display_name) {
+        setFirstName(data.profile.display_name)
+      }
+    }
+
     if (entryId) {
       loadReflection()
       loadMessages()
+      loadProfile()
     }
   }, [entryId])
 
@@ -127,17 +149,17 @@ export default function ReflectionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-stone-100 p-6 text-stone-900">
+    <main className="min-h-screen bg-[#faf7ef] p-6 text-stone-900">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div className="rounded-3xl border border-stone-200 bg-white/85 p-8 shadow-sm backdrop-blur">
+        <div className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm uppercase tracking-[0.25em] text-stone-500">
+              <p className="text-sm uppercase tracking-[0.3em] text-stone-500">
                 Reflection
               </p>
 
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                Continue the conversation with yourself.
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+                Continue the conversation with yourself, {firstName}.
               </h1>
             </div>
 
@@ -156,7 +178,7 @@ export default function ReflectionPage() {
           </p>
         </div>
 
-        <section className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-7 shadow-sm">
           <p className="text-sm font-medium text-stone-500">
             Opening reflection
           </p>
@@ -166,7 +188,7 @@ export default function ReflectionPage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-7 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Go deeper</h2>
 
@@ -189,7 +211,7 @@ export default function ReflectionPage() {
                 className={`rounded-2xl p-4 text-sm leading-7 ${
                   message.role === 'user'
                     ? 'ml-auto max-w-[85%] bg-stone-900 text-white'
-                    : 'mr-auto max-w-[85%] bg-amber-50 text-stone-900'
+                    : 'mr-auto max-w-[85%] bg-stone-50 text-stone-900'
                 }`}
               >
                 <p className="mb-2 text-xs uppercase tracking-[0.2em] opacity-60">

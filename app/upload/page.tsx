@@ -29,14 +29,37 @@ export default function UploadPage() {
   useEffect(() => {
     const loadUser = async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session },
+      } = await supabase.auth.getSession()
 
-      setFirstName(getDisplayName(user?.email))
+      if (!session?.access_token) {
+      setFirstName('there')
+      return
     }
 
-    loadUser()
-  }, [])
+    const res = await fetch('/api/user-profile', {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      setFirstName('there')
+      return
+    }
+
+    if (data.profile?.display_name) {
+      setFirstName(data.profile.display_name)
+      return
+    }
+
+    setFirstName(getDisplayName(data.email))
+  }
+
+  loadUser()
+}, [])
 
   useEffect(() => {
     return () => {

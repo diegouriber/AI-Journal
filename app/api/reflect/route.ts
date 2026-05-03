@@ -37,6 +37,14 @@ export async function POST(req: Request) {
     const newEntryText =
       transcriptRows[0].confirmed_text || transcriptRows[0].raw_ocr_text
 
+    const { data: userProfile } = await supabaseAdmin
+      .from('user_profiles')
+      .select(
+        'display_name, birthday, values_text, life_direction, self_understanding_goal'
+      )
+      .eq('user_id', entry.user_id)
+      .maybeSingle()
+
     const { data: profileSignals } = await supabaseAdmin
       .from('profile_signals')
       .select('signal_type, signal_text, strength')
@@ -54,27 +62,45 @@ export async function POST(req: Request) {
     const response = await client.responses.create({
       model: 'gpt-4.1-mini',
       input: `
-You are an AI journaling assistant.
+You are an AI journaling companion.
 
 You are analyzing ONE new journal entry/session from a user.
-The reflection should focus on this new entry, but use the user's accumulated profile and previous decision principles as background context.
+
+The reflection should focus on this new entry, but it should be informed by:
+- the user's self-described profile
+- previous profile signals
+- previous decision principles
 
 Do not diagnose.
 Do not overclaim.
-Do not sound clinical or robotic.
-Do not force a rigid report.
-Keep the tone thoughtful, open-minded, and conversational.
+Do not sound clinical.
+Do not flatter.
+Do not write like a school report.
+Do not write one massive paragraph.
+Do not force meaning where there is none.
 
-Your job:
-1. Reflect on strong ideas worth dwelling on in the new entry.
-2. Notice meaningful frictions, tensions, or contradictions if they appear.
-3. Mention what the entry may suggest about the user's values, personality, or way of seeing life, but carefully.
-4. If the new entry connects to previous profile signals or principles, gently point that out.
-5. End by opening discussion, not closing it.
+Your job is to help the user understand what their own writing may be opening up.
+
+Write the reflection in clear sections:
+
+1. Cool ideas you had
+2. Worth going deeper
+3. What this may say about you
+4. Frictions or tensions
+5. One question to sit with
+
+The tone should feel thoughtful, direct, human, and quietly eye-opening.
+It should feel like a private conversation in a calm room, not an AI analysis report.
+Be specific to the entry.
+If the entry connects to previous profile signals or principles, mention that gently.
+If the connection is weak, do not force it.
 
 Also extract:
 - profile signals to add
 - decision principles to add
+
+User-provided profile context:
+${JSON.stringify(userProfile || {}, null, 2)}
 
 Existing profile signals:
 ${JSON.stringify(profileSignals || [], null, 2)}
@@ -110,10 +136,25 @@ Return ONLY valid JSON in this exact shape:
     const raw = response.output_text?.trim()
 
     if (!raw) {
-      return NextResponse.json({ error: 'No reflection generated' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'No reflection generated' },
+        { status: 500 }
+      )
     }
 
-    const parsed = JSON.parse(raw)
+    let parsed
+
+    try {
+      parsed = JSON.parse(raw)
+    } catch (parseError) {
+      return NextResponse.json(
+        {
+          error: 'Reflection was not valid JSON.',
+          raw,
+        },
+        { status: 500 }
+      )
+    }
 
     const reflectionText = parsed.reflection_text || ''
 
@@ -127,6 +168,13 @@ Return ONLY valid JSON in this exact shape:
     if (reflectionError) {
       return NextResponse.json({ error: reflectionError.message }, { status: 500 })
     }
+
+    await supabaseAdmin.from('reflection_messages').insert({
+      entry_id: entryId,
+      user_id: entry.user_id,
+      role: 'assistant',
+      content: reflectionText,
+    })
 
     const signals = parsed.profile_signals_to_add || []
 
