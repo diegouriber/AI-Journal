@@ -1,25 +1,71 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
+type UploadFile = {
+  file: File
+  previewUrl: string | null
+}
+
 export default function UploadPage() {
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<UploadFile[]>([])
   const [message, setMessage] = useState('')
   const [uploading, setUploading] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [firstName, setFirstName] = useState('there')
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user?.email) {
+        const name = user.email.split('@')[0].split('.')[0]
+        setFirstName(name.charAt(0).toUpperCase() + name.slice(1))
+      }
+    }
+
+    loadUser()
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      files.forEach((item) => {
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl)
+        }
+      })
+    }
+  }, [files])
 
   const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
 
     if (selectedFiles.length === 0) return
 
-    setFiles((prev) => [...prev, ...selectedFiles])
+    const newFiles = selectedFiles.map((file) => ({
+      file,
+      previewUrl: file.type.startsWith('image/')
+        ? URL.createObjectURL(file)
+        : null,
+    }))
+
+    setFiles((prev) => [...prev, ...newFiles])
     e.target.value = ''
   }
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
+    setFiles((prev) => {
+      const itemToRemove = prev[index]
+
+      if (itemToRemove?.previewUrl) {
+        URL.revokeObjectURL(itemToRemove.previewUrl)
+      }
+
+      return prev.filter((_, i) => i !== index)
+    })
   }
 
   const reverseFiles = () => {
@@ -58,12 +104,12 @@ export default function UploadPage() {
 
   const handleSubmit = async () => {
     if (files.length === 0) {
-      setMessage('Add at least one file before submitting.')
+      setMessage('Add at least one page before submitting your entry.')
       return
     }
 
     setUploading(true)
-    setMessage('Creating journal entry...')
+    setMessage('Creating space for this entry...')
 
     const {
       data: { user },
@@ -93,9 +139,9 @@ export default function UploadPage() {
     }
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+      const file = files[i].file
 
-      setMessage(`Uploading page ${i + 1} of ${files.length}...`)
+      setMessage(`Saving page ${i + 1} of ${files.length}...`)
 
       const filePath = `${user.id}/${entry.id}/${i + 1}-${Date.now()}-${file.name}`
 
@@ -125,7 +171,7 @@ export default function UploadPage() {
       }
     }
 
-    setMessage('Upload successful. Reading your journal...')
+    setMessage('Reading your pages carefully...')
 
     const res = await fetch('/api/transcribe', {
       method: 'POST',
@@ -145,110 +191,202 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-8 text-stone-900">
-      <div className="mx-auto max-w-2xl space-y-6 rounded-2xl border bg-white p-8 shadow-sm">
+    <main className="atmosphere min-h-screen p-6 text-stone-900">
+      <div className="relative z-10 mx-auto max-w-6xl space-y-6">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold">Upload Journal</h1>
+          <div>
+            <p className="text-sm uppercase tracking-[0.25em] text-stone-500">
+              Introspective Pathway
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+              Hi {firstName}, bring today’s pages into the room.
+            </h1>
+          </div>
 
           <a
             href="/profile"
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-stone-50"
+            className="rounded-full border border-stone-300 bg-white/70 px-5 py-2 text-sm shadow-sm backdrop-blur hover:bg-white"
           >
             Profile / Downloads
           </a>
         </div>
 
-        <p className="text-sm leading-6 text-stone-600">
-          Add your journal pages in the order they should be read. You can add
-          files one by one or select multiple at once, then drag them into the
-          correct order before submitting.
-        </p>
+        <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="glass-card rounded-[2rem] p-7">
+            <p className="text-sm font-medium text-stone-500">
+              One entry, many pages.
+            </p>
 
-        <div className="rounded-xl border border-dashed p-6">
-          <label className="block text-sm font-medium">
-            Choose journal pages
-          </label>
+            <h2 className="mt-3 text-2xl font-semibold leading-tight">
+              Add the pages from one journal session and arrange them in the
+              order they should be read.
+            </h2>
 
-          <input
-            type="file"
-            multiple
-            accept="image/*,application/pdf"
-            onChange={handleAddFiles}
-            disabled={uploading}
-            className="mt-3"
-          />
-        </div>
+            <p className="mt-4 text-sm leading-7 text-stone-600">
+              The images stay here first. Nothing is submitted until you decide.
+              Use the preview cards to confirm what you selected, drag pages
+              into order, reverse them if your camera roll came backwards, and
+              then submit the full entry.
+            </p>
 
-        {files.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Files uploaded in order</h2>
+            <div className="mt-6 rounded-3xl border border-dashed border-stone-300 bg-white/60 p-6">
+              <label className="block text-sm font-semibold">
+                Choose journal pages
+              </label>
 
-              <button
-                type="button"
-                onClick={reverseFiles}
-                disabled={uploading || files.length < 2}
-                className="rounded-lg border px-3 py-2 text-sm hover:bg-stone-50 disabled:opacity-40"
-              >
-                Reverse order
-              </button>
+              <input
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                onChange={handleAddFiles}
+                disabled={uploading}
+                className="mt-4 block w-full text-sm"
+              />
+
+              <p className="mt-4 text-xs leading-5 text-stone-500">
+                You can add more files later. They will be appended to the
+                current list.
+              </p>
             </div>
 
-            <div className="space-y-2">
-              {files.map((file, index) => (
-                <div
-                  key={`${file.name}-${index}`}
-                  draggable={!uploading}
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(index)}
-                  onDragEnd={handleDragEnd}
-                  className={`flex cursor-move items-center justify-between gap-3 rounded-lg border p-3 transition ${
-                    draggedIndex === index
-                      ? 'border-stone-900 bg-stone-100 opacity-60'
-                      : 'bg-white hover:bg-stone-50'
-                  }`}
+            <div className="mt-6 rounded-3xl bg-stone-900 p-6 text-white">
+              <p className="text-sm uppercase tracking-[0.25em] text-stone-400">
+                Before submitting
+              </p>
+
+              <ul className="mt-4 space-y-3 text-sm leading-6 text-stone-200">
+                <li>1. Make sure every page belongs to the same entry.</li>
+                <li>2. Check the image previews.</li>
+                <li>3. Drag or reverse the order if needed.</li>
+                <li>4. Submit only when the sequence feels right.</li>
+              </ul>
+            </div>
+
+            {message && (
+              <p className="mt-5 rounded-2xl bg-stone-900 px-4 py-3 text-sm text-white">
+                {message}
+              </p>
+            )}
+          </div>
+
+          <div className="paper-card rounded-[2rem] p-7">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm uppercase tracking-[0.25em] text-stone-500">
+                  Selected pages
+                </p>
+
+                <h2 className="mt-2 text-2xl font-semibold">
+                  Reading order
+                </h2>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={reverseFiles}
+                  disabled={uploading || files.length < 2}
+                  className="rounded-full border px-4 py-2 text-sm hover:bg-stone-50 disabled:opacity-40"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="rounded-md border bg-stone-50 px-2 py-1 text-xs text-stone-500">
-                      Drag
+                  Reverse order
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFiles([])}
+                  disabled={uploading || files.length === 0}
+                  className="rounded-full border px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"
+                >
+                  Clear all
+                </button>
+              </div>
+            </div>
+
+            {files.length === 0 ? (
+              <div className="mt-6 rounded-3xl border border-dashed p-10 text-center">
+                <p className="text-sm font-medium text-stone-600">
+                  No pages selected yet.
+                </p>
+                <p className="mt-2 text-sm leading-6 text-stone-500">
+                  Once you choose images, they will appear here as preview cards.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {files.map((item, index) => (
+                  <div
+                    key={`${item.file.name}-${index}`}
+                    draggable={!uploading}
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(index)}
+                    onDragEnd={handleDragEnd}
+                    className={`group overflow-hidden rounded-3xl border transition ${
+                      draggedIndex === index
+                        ? 'border-stone-900 bg-amber-50 opacity-70'
+                        : 'border-stone-200 bg-white hover:-translate-y-0.5 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="relative aspect-[4/3] bg-stone-100">
+                      {item.previewUrl ? (
+                        <img
+                          src={item.previewUrl}
+                          alt={`Page ${index + 1} preview`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center p-6 text-center text-sm text-stone-500">
+                          PDF / document preview unavailable
+                        </div>
+                      )}
+
+                      <div className="absolute left-3 top-3 rounded-full bg-stone-900 px-3 py-1 text-xs font-semibold text-white shadow">
+                        Page {index + 1}
+                      </div>
+
+                      <div className="absolute right-3 top-3 rounded-full bg-white/85 px-3 py-1 text-xs text-stone-700 shadow backdrop-blur">
+                        Drag
+                      </div>
                     </div>
 
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">Page {index + 1}</p>
-                      <p className="truncate text-sm text-stone-600">
-                        {file.name}
-                      </p>
+                    <div className="space-y-3 p-4">
+                      <div>
+                        <p className="truncate text-sm font-semibold">
+                          {item.file.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-stone-500">
+                          {(item.file.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        disabled={uploading}
+                        className="w-full rounded-full border px-3 py-2 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        Remove page
+                      </button>
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeFile(index)}
-                    disabled={uploading}
-                    className="rounded border px-2 py-1 text-xs text-red-700 disabled:opacity-40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </section>
 
         <button
           onClick={handleSubmit}
           disabled={uploading || files.length === 0}
-          className="w-full rounded-lg bg-stone-900 px-4 py-3 text-white disabled:opacity-50"
+          className="w-full rounded-3xl bg-stone-900 px-5 py-5 text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-50"
         >
-          {uploading ? 'Processing...' : 'Submit Journal Entry'}
+          {uploading
+            ? 'Processing your entry...'
+            : files.length === 0
+              ? 'Add pages to begin'
+              : `Submit ${files.length} page${files.length === 1 ? '' : 's'} as one journal entry`}
         </button>
-
-        {message && (
-          <p className="rounded-lg bg-stone-100 p-3 text-sm text-stone-700">
-            {message}
-          </p>
-        )}
       </div>
     </main>
   )
