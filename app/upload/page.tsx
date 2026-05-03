@@ -1,390 +1,370 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
-type UploadFile = {
-  file: File
-  previewUrl: string | null
-}
-
-function getDisplayName(email?: string | null) {
-  if (!email) return 'there'
-
-  const prefix = email.split('@')[0].toLowerCase()
-
-  if (prefix.includes('diego')) return 'Diego'
-
-  const clean = prefix.split(/[._-]/)[0]
-  return clean.charAt(0).toUpperCase() + clean.slice(1)
-}
+type Mode = 'write' | 'upload'
 
 export default function UploadPage() {
-  const [files, setFiles] = useState<UploadFile[]>([])
+  const router = useRouter()
+
+  const [mode, setMode] = useState<Mode>('write')
+  const [title, setTitle] = useState('')
+  const [entryText, setEntryText] = useState('')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [message, setMessage] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [firstName, setFirstName] = useState('there')
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    const loadUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+  const wordCount = useMemo(() => {
+    return entryText.trim() ? entryText.trim().split(/\s+/).length : 0
+  }, [entryText])
 
-      if (!session?.access_token) {
-        setFirstName('there')
+  const estimatedMinutes = useMemo(() => {
+    if (!wordCount) return 0
+    return Math.max(1, Math.ceil(wordCount / 180))
+  }, [wordCount])
+
+  const todayLabel = useMemo(() => {
+    return new Intl.DateTimeFormat('en', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date())
+  }, [])
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    setMessage('')
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.access_token) {
+      setMessage('You must be signed in first.')
+      setLoading(false)
+      return
+    }
+
+    const formData = new FormData()
+
+    if (mode === 'upload') {
+      if (!selectedFile) {
+        setMessage('Choose a file first.')
+        setLoading(false)
         return
       }
 
-      const res = await fetch('/api/user-profile', {
+      formData.append('file', selectedFile)
+    }
+
+    if (mode === 'write') {
+      if (!entryText.trim()) {
+        setMessage('Write something first. Even one honest sentence is enough.')
+        setLoading(false)
+        return
+      }
+
+      const safeTitle =
+        title.trim().replace(/[^a-zA-Z0-9-_ ]/g, '') || 'journal-entry'
+
+      const textFile = new File([entryText], `${safeTitle}.txt`, {
+        type: 'text/plain',
+      })
+
+      formData.append('file', textFile)
+      formData.append('typed_entry', 'true')
+      formData.append('entry_title', title.trim())
+    }
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
+        body: formData,
       })
 
       const data = await res.json()
 
-      if (data.profile?.display_name) {
-        setFirstName(data.profile.display_name)
+      if (!res.ok) {
+        setMessage(data.error || 'Something went wrong.')
+        setLoading(false)
         return
       }
 
-      setFirstName(getDisplayName(data.email))
-    }
+      setMessage('Entry saved.')
 
-    loadUser()
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      files.forEach((item) => {
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
-      })
-    }
-  }, [files])
-
-  const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || [])
-    if (selectedFiles.length === 0) return
-
-    const newFiles = selectedFiles.map((file) => ({
-      file,
-      previewUrl: file.type.startsWith('image/')
-        ? URL.createObjectURL(file)
-        : null,
-    }))
-
-    setFiles((prev) => [...prev, ...newFiles])
-    e.target.value = ''
-  }
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => {
-      const item = prev[index]
-      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  const clearFiles = () => {
-    files.forEach((item) => {
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
-    })
-    setFiles([])
-  }
-
-  const reverseFiles = () => {
-    setFiles((prev) => [...prev].reverse())
-  }
-
-  const moveFile = (fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return
-
-    setFiles((prev) => {
-      const updated = [...prev]
-      const [movedFile] = updated.splice(fromIndex, 1)
-      updated.splice(toIndex, 0, movedFile)
-      return updated
-    })
-  }
-
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
-  }
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-  }
-
-  const handleDrop = (dropIndex: number) => {
-    if (draggedIndex === null) return
-    moveFile(draggedIndex, dropIndex)
-    setDraggedIndex(null)
-  }
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null)
-  }
-
-  const handleSubmit = async () => {
-    if (files.length === 0) {
-      setMessage('Add at least one page before submitting.')
-      return
-    }
-
-    setUploading(true)
-    setMessage('Creating today’s session...')
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      setMessage('You must be signed in first.')
-      setUploading(false)
-      return
-    }
-
-    const { data: entry, error: entryError } = await supabase
-      .from('journal_entries')
-      .insert({
-        user_id: user.id,
-        source_type: 'image',
-        status: 'uploaded',
-      })
-      .select()
-      .single()
-
-    if (entryError || !entry) {
-      setMessage(entryError?.message || 'Could not create journal entry.')
-      setUploading(false)
-      return
-    }
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i].file
-      setMessage(`Saving page ${i + 1} of ${files.length}...`)
-
-      const filePath = `${user.id}/${entry.id}/${i + 1}-${Date.now()}-${file.name}`
-
-      const { error: storageError } = await supabase.storage
-        .from('journal-uploads')
-        .upload(filePath, file)
-
-      if (storageError) {
-        setMessage(storageError.message)
-        setUploading(false)
+      if (data.entryId) {
+        router.push(`/review/${data.entryId}`)
         return
       }
 
-      const { error: uploadRowError } = await supabase
-        .from('journal_uploads')
-        .insert({
-          entry_id: entry.id,
-          file_path: filePath,
-          page_order: i + 1,
-          mime_type: file.type,
-        })
-
-      if (uploadRowError) {
-        setMessage(uploadRowError.message)
-        setUploading(false)
-        return
-      }
+      router.push('/profile')
+    } catch (error) {
+      setMessage('Something went wrong while saving your entry.')
     }
 
-    setMessage('Reading your pages carefully...')
-
-    const res = await fetch('/api/transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: entry.id }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      setMessage(data.error || 'OCR failed.')
-      setUploading(false)
-      return
-    }
-
-    window.location.href = `/review/${entry.id}`
+    setLoading(false)
   }
 
   return (
-    <main className="min-h-screen bg-[#faf7ef] p-6 text-stone-900">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-stone-500">
-                Today’s Session
-              </p>
+    <main className="min-h-screen bg-[#faf9f6] px-5 py-6 text-stone-900 md:px-8 md:py-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="flex items-center justify-between">
+          <a
+            href="/"
+            className="text-sm font-medium tracking-[0.22em] text-stone-500"
+          >
+            AI — Journal
+          </a>
 
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-                Let’s start today’s session, your introspective journey.
-              </h1>
-
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
-                Hi {firstName}. Bring in the pages from one entry, arrange them
-                gently, and submit when the sequence feels true.
-              </p>
-            </div>
-
+          <nav className="flex items-center gap-3">
             <a
               href="/profile"
-              className="rounded-full border px-5 py-3 text-sm hover:bg-stone-50"
+              className="rounded-full border border-stone-200 bg-white/70 px-4 py-2 text-sm text-stone-600 shadow-sm transition hover:bg-white"
             >
               Profile
             </a>
-          </div>
-        </div>
+          </nav>
+        </header>
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">Bring in your pages</h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">
-                Images, PDFs, and Word files are welcome. Handwritten images are
-                read with OCR; digital files can become part of the same archive.
-              </p>
-            </div>
-
-            <label className="cursor-pointer rounded-full bg-stone-900 px-7 py-4 text-sm font-semibold text-white hover:bg-stone-800">
-              Choose files
-              <input
-                type="file"
-                multiple
-                accept="image/*,application/pdf,.doc,.docx"
-                onChange={handleAddFiles}
-                disabled={uploading}
-                className="hidden"
-              />
-            </label>
-          </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold">Reading order</h2>
-
-              <p className="mt-1 text-sm text-stone-500">
-                Drag, reverse, or remove before submitting.
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={reverseFiles}
-                disabled={uploading || files.length < 2}
-                className="rounded-full border px-5 py-2 text-sm font-semibold hover:bg-stone-50 disabled:opacity-40"
-              >
-                Reverse
-              </button>
-
-              <button
-                type="button"
-                onClick={clearFiles}
-                disabled={uploading || files.length === 0}
-                className="rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {files.length === 0 ? (
-            <div className="mt-7 rounded-[2rem] border border-dashed border-stone-300 bg-white p-12 text-center">
-              <p className="text-base font-semibold">
-                No pages selected yet.
+        <section className="mt-12 grid gap-8 lg:grid-cols-[0.78fr_1.22fr] lg:items-start">
+          <aside className="space-y-6">
+            <div className="rounded-[2rem] border border-stone-200 bg-white/80 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.04)] backdrop-blur">
+              <p className="text-sm uppercase tracking-[0.28em] text-stone-400">
+                {todayLabel}
               </p>
 
-              <p className="mt-2 text-sm leading-6 text-stone-500">
-                Your selected pages will appear here before becoming part of
-                your archive.
+              <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
+                Take a moment.
+                <br />
+                Put it somewhere.
+              </h1>
+
+              <p className="mt-5 text-base leading-8 text-stone-600">
+                This does not need to be beautiful. It does not need to be
+                complete. Just write what is present, while it is still close.
               </p>
+
+              <div className="mt-7 rounded-[1.5rem] bg-stone-50 p-5">
+                <p className="text-sm leading-7 text-stone-500">
+                  A thought becomes easier to understand once it stops living
+                  only in your head.
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {files.map((item, index) => (
-                <div
-                  key={`${item.file.name}-${index}`}
-                  draggable={!uploading}
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(index)}
-                  onDragEnd={handleDragEnd}
-                  className={`overflow-hidden rounded-[1.75rem] border bg-white transition ${
-                    draggedIndex === index
-                      ? 'border-stone-900 opacity-70'
-                      : 'border-stone-200 hover:-translate-y-0.5 hover:shadow-lg'
+
+            <div className="rounded-[2rem] border border-stone-200 bg-white/70 p-6 shadow-sm">
+              <p className="text-sm font-medium text-stone-500">
+                Gentle prompts
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <p className="rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-600">
+                  What has been quietly taking space in your mind?
+                </p>
+
+                <p className="rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-600">
+                  What are you avoiding because it feels too obvious?
+                </p>
+
+                <p className="rounded-2xl bg-stone-50 p-4 text-sm leading-6 text-stone-600">
+                  What do you already know, but have not admitted clearly?
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          <section className="rounded-[2.5rem] border border-stone-200 bg-white p-5 shadow-[0_24px_90px_rgba(0,0,0,0.05)] md:p-8">
+            <div className="flex flex-col gap-5 border-b border-stone-100 pb-6 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.25em] text-stone-400">
+                  New entry
+                </p>
+
+                <h2 className="mt-2 text-3xl font-semibold tracking-tight">
+                  Write freely.
+                </h2>
+              </div>
+
+              <div className="inline-flex w-full rounded-full border border-stone-200 bg-stone-50 p-1 md:w-auto">
+                <button
+                  onClick={() => setMode('write')}
+                  className={`flex-1 rounded-full px-5 py-3 text-sm font-medium transition md:flex-none ${
+                    mode === 'write'
+                      ? 'bg-white text-stone-900 shadow-sm'
+                      : 'text-stone-500 hover:text-stone-800'
                   }`}
                 >
-                  <div className="relative aspect-[4/3] bg-stone-100">
-                    {item.previewUrl ? (
-                      <img
-                        src={item.previewUrl}
-                        alt={`Page ${index + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center p-6 text-center text-sm text-stone-500">
-                        Document selected
-                      </div>
-                    )}
+                  Write
+                </button>
 
-                    <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold shadow-sm">
-                      Page {index + 1}
-                    </div>
+                <button
+                  onClick={() => setMode('upload')}
+                  className={`flex-1 rounded-full px-5 py-3 text-sm font-medium transition md:flex-none ${
+                    mode === 'upload'
+                      ? 'bg-white text-stone-900 shadow-sm'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
+                >
+                  Upload
+                </button>
+              </div>
+            </div>
+
+            {mode === 'write' ? (
+              <div className="pt-7">
+                <label className="block">
+                  <span className="text-sm font-medium text-stone-500">
+                    Title, optional
+                  </span>
+
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="A quiet thought"
+                    className="mt-3 w-full border-none bg-transparent text-3xl font-semibold tracking-tight text-stone-900 outline-none placeholder:text-stone-300"
+                  />
+                </label>
+
+                <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-stone-400">
+                  <span>{wordCount} words</span>
+                  <span>·</span>
+                  <span>
+                    {estimatedMinutes
+                      ? `${estimatedMinutes} min read`
+                      : 'Start anywhere'}
+                  </span>
+                  <span>·</span>
+                  <span>Saved to your archive after submission</span>
+                </div>
+
+                <label className="mt-8 block">
+                  <textarea
+                    value={entryText}
+                    onChange={(e) => setEntryText(e.target.value)}
+                    placeholder="Start with the thing you keep circling around..."
+                    className="min-h-[520px] w-full resize-none rounded-[2rem] border border-stone-100 bg-[#fbfaf7] px-6 py-6 text-[17px] leading-9 text-stone-800 outline-none transition placeholder:text-stone-300 focus:border-stone-300"
+                  />
+                </label>
+
+                <div className="mt-6 rounded-[1.5rem] bg-stone-50 px-5 py-4">
+                  <p className="text-sm leading-7 text-stone-500">
+                    You can write messy. The system can organize later. Your job
+                    is only to be honest enough that something real gets
+                    captured.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="pt-7">
+                <div className="rounded-[2rem] border border-dashed border-stone-300 bg-[#fbfaf7] p-8 text-center md:p-12">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl shadow-sm">
+                    ↑
                   </div>
 
-                  <div className="space-y-3 p-4">
-                    <p className="truncate text-sm font-semibold">
-                      {item.file.name}
-                    </p>
+                  <h3 className="mt-6 text-2xl font-semibold tracking-tight">
+                    Upload pages you already wrote.
+                  </h3>
 
-                    <p className="text-xs text-stone-500">
-                      {(item.file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                  <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">
+                    Add screenshots, scans, PDFs, Word documents, or text files.
+                    Keep the archive alive without rewriting everything.
+                  </p>
 
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      disabled={uploading}
-                      className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"
-                    >
-                      Remove
-                    </button>
+                  <div className="mx-auto mt-8 max-w-md rounded-[1.5rem] border border-stone-200 bg-white p-4">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) setSelectedFile(file)
+                      }}
+                      className="w-full text-sm text-stone-600 file:mr-4 file:rounded-full file:border-0 file:bg-stone-900 file:px-4 file:py-2 file:text-sm file:text-white"
+                    />
+                  </div>
+
+                  {selectedFile && (
+                    <div className="mx-auto mt-5 max-w-md rounded-2xl bg-white px-4 py-3 text-sm text-stone-600 shadow-sm">
+                      Selected:{' '}
+                      <span className="font-medium text-stone-800">
+                        {selectedFile.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[1.5rem] bg-stone-50 p-5">
+                    <p className="text-sm font-medium text-stone-700">
+                      Good for
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-stone-500">
+                      Old journal pages, reflections, handwritten notes, and
+                      documents.
+                    </p>
+                  </div>
+
+                  <div className="rounded-[1.5rem] bg-stone-50 p-5">
+                    <p className="text-sm font-medium text-stone-700">
+                      Supported
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-stone-500">
+                      PDF, DOC, DOCX, TXT, PNG, JPG, and JPEG files.
+                    </p>
+                  </div>
+
+                  <div className="rounded-[1.5rem] bg-stone-50 p-5">
+                    <p className="text-sm font-medium text-stone-700">
+                      Purpose
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-stone-500">
+                      Preserve the raw entry first. Extract meaning second.
+                    </p>
                   </div>
                 </div>
-              ))}
+              </div>
+            )}
+
+            <div className="mt-8 flex flex-col gap-4 border-t border-stone-100 pt-6 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm leading-6 text-stone-500">
+                {mode === 'write'
+                  ? 'When you are ready, save the entry and let the reflection begin.'
+                  : 'When the file is ready, upload it into your archive.'}
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a
+                  href="/profile"
+                  className="rounded-full border border-stone-300 px-6 py-3 text-center text-sm text-stone-700 transition hover:bg-stone-50"
+                >
+                  Back to profile
+                </a>
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="rounded-full bg-stone-900 px-7 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-50"
+                >
+                  {loading
+                    ? 'Saving...'
+                    : mode === 'write'
+                    ? 'Save entry'
+                    : 'Upload entry'}
+                </button>
+              </div>
             </div>
-          )}
+
+            {message && (
+              <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+                {message}
+              </div>
+            )}
+          </section>
         </section>
-
-        <button
-          onClick={handleSubmit}
-          disabled={uploading || files.length === 0}
-          className="w-full rounded-full bg-stone-900 px-6 py-5 text-base font-semibold text-white shadow-sm hover:bg-stone-800 disabled:opacity-50"
-        >
-          {uploading
-            ? 'Processing your entry...'
-            : files.length === 0
-              ? 'Choose pages to begin'
-              : `Submit ${files.length} page${files.length === 1 ? '' : 's'} as one entry`}
-        </button>
-
-        {message && (
-          <p className="rounded-2xl bg-white p-4 text-center text-sm text-stone-600 shadow-sm">
-            {message}
-          </p>
-        )}
       </div>
     </main>
   )

@@ -12,10 +12,6 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* 
-  Force the whole app to stay in light mode.
-  This prevents Chrome/system dark mode from turning the home page black.
-*/
 html,
 body {
   min-height: 100%;
