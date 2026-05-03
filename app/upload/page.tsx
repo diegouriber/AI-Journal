@@ -103,7 +103,7 @@ export default function UploadPage() {
 
   const handleSubmit = async () => {
     if (files.length === 0) {
-      setMessage('Add at least one page before submitting your entry.')
+      setMessage('Add at least one page before submitting.')
       return
     }
 
@@ -189,11 +189,11 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="soft-room min-h-screen p-6 text-stone-900">
-      <div className="soft-light left-[-10rem] top-[-10rem]" />
-      <div className="soft-light bottom-[-12rem] right-[-10rem]" />
+    <main className="white-room min-h-screen p-6 text-stone-900">
+      <div className="soft-glow left-[-10rem] top-[-10rem]" />
+      <div className="soft-glow bottom-[-12rem] right-[-10rem]" />
 
-      <div className="relative z-10 mx-auto max-w-5xl space-y-8">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-7">
         <header className="fade-down flex items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-stone-500">
@@ -201,12 +201,12 @@ export default function UploadPage() {
             </p>
 
             <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-5xl">
-              Let’s start today’s introspective journey, {firstName}.
+              Let’s begin quietly, {firstName}.
             </h1>
 
             <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
-              Choose the pages that belong to this entry. Put them in the order
-              they should be read. Nothing is submitted until you are ready.
+              Add the pages for one entry. Arrange them in the order they should
+              be read. When it feels right, submit the session.
             </p>
           </div>
 
@@ -218,13 +218,14 @@ export default function UploadPage() {
           </a>
         </header>
 
-        <section className="quiet-card fade-up rounded-[2rem] p-7">
+        <section className="soft-card fade-up rounded-[2rem] p-7">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Add your pages</h2>
+              <h2 className="text-xl font-semibold">Bring in your pages</h2>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Images work best. PDFs and Word documents can be added too; if
-                the text is already digital, we can later skip OCR for those.
+                Images, PDFs, or Word files. Handwritten images will be read
+                with OCR; digital text files can later be processed more
+                directly.
               </p>
             </div>
 
@@ -242,13 +243,12 @@ export default function UploadPage() {
           </div>
         </section>
 
-        <section className="paper-panel fade-up delay-1 rounded-[2rem] p-7">
+        <section className="paper-card fade-up delay-1 rounded-[2rem] p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold">Reading order</h2>
               <p className="mt-1 text-sm text-stone-500">
-                Drag pages around, reverse the order, or remove anything that
-                does not belong.
+                Drag, reverse, or remove before submitting.
               </p>
             </div>
 
@@ -279,8 +279,8 @@ export default function UploadPage() {
                 No pages selected yet.
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-500">
-                When you choose files, they will appear here as quiet little
-                cards before becoming part of your archive.
+                Your selected pages will appear here before becoming part of
+                your archive.
               </p>
             </div>
           ) : (
