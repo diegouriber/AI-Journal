@@ -130,6 +130,11 @@ export default function UploadPage() {
         type: 'text/plain',
       })
 
+      /*
+        IMPORTANT:
+        Your backend originally worked with the field name "file".
+        We also include "files" for multi-file compatibility.
+      */
       formData.append('file', textFile)
       formData.append('files', textFile)
       formData.append('typed_entry', 'true')
@@ -143,7 +148,14 @@ export default function UploadPage() {
         return
       }
 
+      /*
+        IMPORTANT:
+        We send BOTH "file" and "files".
+        This preserves the old working backend behavior while still supporting
+        the new multi-file UI.
+      */
       files.forEach((item) => {
+        formData.append('file', item.file)
         formData.append('files', item.file)
       })
 
@@ -163,6 +175,7 @@ export default function UploadPage() {
       const data = await res.json()
 
       if (!res.ok) {
+        console.error('Upload API error:', data)
         setMessage(data.error || 'Something went wrong.')
         setLoading(false)
         return
@@ -177,6 +190,7 @@ export default function UploadPage() {
 
       router.push('/profile')
     } catch (error) {
+      console.error('Upload failed:', error)
       setMessage('Something went wrong while saving your entry.')
     }
 
@@ -401,6 +415,7 @@ export default function UploadPage() {
 
                       <div className="flex flex-wrap gap-3">
                         <button
+                          type="button"
                           onClick={reverseFiles}
                           className="rounded-full border border-stone-300 px-4 py-2 text-sm text-stone-700 transition hover:bg-stone-50"
                         >
@@ -408,6 +423,7 @@ export default function UploadPage() {
                         </button>
 
                         <button
+                          type="button"
                           onClick={clearFiles}
                           className="rounded-full border border-red-200 px-4 py-2 text-sm text-red-700 transition hover:bg-red-50"
                         >
@@ -461,6 +477,7 @@ export default function UploadPage() {
                             </div>
 
                             <button
+                              type="button"
                               onClick={() => removeFile(item.id)}
                               className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-stone-700 opacity-100 shadow-sm transition hover:bg-red-50 hover:text-red-700 md:opacity-0 md:group-hover:opacity-100"
                             >
@@ -532,6 +549,7 @@ export default function UploadPage() {
                 </a>
 
                 <button
+                  type="button"
                   onClick={handleSubmit}
                   disabled={loading}
                   className="rounded-full bg-stone-900 px-7 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-50"
