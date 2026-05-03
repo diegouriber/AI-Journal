@@ -137,7 +137,7 @@ export default function ProfilePage() {
 
         <section className="grid gap-6 md:grid-cols-2">
           <div className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-900 text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-800">
               W
             </div>
 
@@ -162,7 +162,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="rounded-3xl border border-stone-200 bg-white/85 p-7 shadow-sm backdrop-blur">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-200 text-stone-900">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-100 text-green-800">
               X
             </div>
 
