@@ -189,7 +189,7 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="white-room min-h-screen p-6 text-stone-900">
+    <main className="white-room min-h-screen bg-[#fbfaf7] p-6 text-stone-900">
       <div className="soft-glow left-[-10rem] top-[-10rem]" />
       <div className="soft-glow bottom-[-12rem] right-[-10rem]" />
 
