@@ -27,7 +27,9 @@ export default function ProfilePage() {
   const [message, setMessage] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [email, setEmail] = useState('')
+
   const [profile, setProfile] = useState<UserProfile>({
     display_name: '',
     birthday: '',
@@ -71,7 +73,8 @@ export default function ProfilePage() {
           birthday: data.profile.birthday || '',
           values_text: data.profile.values_text || '',
           life_direction: data.profile.life_direction || '',
-          self_understanding_goal: data.profile.self_understanding_goal || '',
+          self_understanding_goal:
+            data.profile.self_understanding_goal || '',
           avatar_url: data.profile.avatar_url || '',
         })
       }
@@ -79,6 +82,46 @@ export default function ProfilePage() {
 
     loadProfile()
   }, [])
+
+  const uploadAvatar = async (file: File) => {
+    setUploadingAvatar(true)
+    setMessage('Uploading profile picture...')
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session?.user) {
+      setMessage('You must be signed in first.')
+      setUploadingAvatar(false)
+      return
+    }
+
+    const fileExt = file.name.split('.').pop()
+    const filePath = `${session.user.id}/avatar-${Date.now()}.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, {
+        upsert: true,
+      })
+
+    if (uploadError) {
+      setMessage(uploadError.message)
+      setUploadingAvatar(false)
+      return
+    }
+
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
+
+    setProfile((prev) => ({
+      ...prev,
+      avatar_url: data.publicUrl,
+    }))
+
+    setMessage('Profile picture uploaded. Click Save profile to keep it.')
+    setUploadingAvatar(false)
+  }
 
   const saveProfile = async () => {
     setSaving(true)
@@ -113,6 +156,12 @@ export default function ProfilePage() {
 
     setMessage('Profile saved.')
     setSaving(false)
+  }
+
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    localStorage.removeItem('last_login_at')
+    window.location.href = '/'
   }
 
   const downloadFile = async (url: string, filename: string) => {
@@ -150,12 +199,13 @@ export default function ProfilePage() {
     a.remove()
 
     window.URL.revokeObjectURL(downloadUrl)
+
     setMessage('Download ready.')
   }
 
   const deleteProfileData = async () => {
     const confirmed = window.confirm(
-      'Are you sure? This will permanently delete your journal archive, reflections, profile signals, and decision principles. This cannot be undone.'
+      'Are you sure? This will permanently delete your journal archive, reflections, profile signals, and decision principles.\n\nThis cannot be undone.'
     )
 
     if (!confirmed) return
@@ -193,41 +243,43 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#faf7ef] p-6 text-stone-900">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <p className="text-sm uppercase tracking-[0.3em] text-stone-500">
+    <main className="min-h-screen bg-stone-50 px-6 py-10 text-stone-900">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
+          <p className="text-sm font-medium uppercase tracking-[0.25em] text-stone-400">
             Personal Archive
           </p>
 
-          <div className="mt-5 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="mt-6 grid gap-8 md:grid-cols-[1fr_auto] md:items-center">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
+              <h1 className="max-w-3xl text-4xl font-semibold tracking-tight md:text-5xl">
                 Hi {displayName}, this is where your thinking accumulates.
               </h1>
 
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
-                Your raw entries are preserved as an archive. Your principles are
-                extracted as a living decision framework. This page is where your
-                writing becomes something you can revisit, export, and build
-                from.
+              <p className="mt-5 max-w-2xl text-base leading-8 text-stone-600">
+                Your raw entries are preserved as an archive. Your principles
+                are extracted as a living decision framework. This page is where
+                your writing becomes something you can revisit, export, and
+                build from.
               </p>
             </div>
 
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-stone-100 text-2xl font-semibold text-stone-500">
+            <div className="flex justify-center md:justify-end">
               {profile.avatar_url ? (
                 <img
                   src={profile.avatar_url}
-                  alt="Profile"
-                  className="h-full w-full object-cover"
+                  alt="Profile picture"
+                  className="h-28 w-28 rounded-full border border-stone-200 object-cover shadow-sm"
                 />
               ) : (
-                displayName.charAt(0).toUpperCase()
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-stone-900 text-4xl font-semibold text-white shadow-sm">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
               )}
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="/upload"
               className="rounded-full bg-stone-900 px-5 py-3 text-sm text-white hover:bg-stone-800"
@@ -235,21 +287,21 @@ export default function ProfilePage() {
               Upload new entry
             </a>
 
-            <a
-              href="/"
-              className="rounded-full border px-5 py-3 text-sm hover:bg-stone-50"
+            <button
+              onClick={signOut}
+              className="rounded-full border border-stone-300 px-5 py-3 text-sm text-stone-700 hover:bg-stone-100"
             >
-              Back to home
-            </a>
+              Sign out
+            </button>
           </div>
-        </div>
+        </section>
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <p className="text-sm uppercase tracking-[0.3em] text-stone-500">
+        <section className="rounded-[2rem] border border-stone-200 bg-white p-7 shadow-sm">
+          <p className="text-sm font-medium text-stone-500">
             Tell me more about yourself
           </p>
 
-          <h2 className="mt-3 text-2xl font-semibold">
+          <h2 className="mt-2 text-2xl font-semibold">
             Give the reflections better context.
           </h2>
 
@@ -258,7 +310,7 @@ export default function ProfilePage() {
             simple. You can change them anytime.
           </p>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium">Name</span>
               <input
@@ -270,7 +322,7 @@ export default function ProfilePage() {
                   }))
                 }
                 placeholder="Diego"
-                className="w-full rounded-2xl border border-stone-200 p-4 text-sm outline-none focus:border-stone-700"
+                className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm outline-none focus:border-stone-700"
               />
             </label>
 
@@ -285,7 +337,7 @@ export default function ProfilePage() {
                     birthday: e.target.value,
                   }))
                 }
-                className="w-full rounded-2xl border border-stone-200 p-4 text-sm outline-none focus:border-stone-700"
+                className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm outline-none focus:border-stone-700"
               />
             </label>
 
@@ -302,7 +354,7 @@ export default function ProfilePage() {
                   }))
                 }
                 placeholder="Example: clarity, family, courage, freedom, impact..."
-                className="min-h-[100px] w-full rounded-2xl border border-stone-200 p-4 text-sm leading-6 outline-none focus:border-stone-700"
+                className="min-h-[100px] w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 outline-none focus:border-stone-700"
               />
             </label>
 
@@ -319,7 +371,7 @@ export default function ProfilePage() {
                   }))
                 }
                 placeholder="A short description of the direction you want your life to move toward."
-                className="min-h-[100px] w-full rounded-2xl border border-stone-200 p-4 text-sm leading-6 outline-none focus:border-stone-700"
+                className="min-h-[100px] w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 outline-none focus:border-stone-700"
               />
             </label>
 
@@ -336,25 +388,32 @@ export default function ProfilePage() {
                   }))
                 }
                 placeholder="Example: my recurring patterns, what I actually want, why I avoid certain decisions..."
-                className="min-h-[100px] w-full rounded-2xl border border-stone-200 p-4 text-sm leading-6 outline-none focus:border-stone-700"
+                className="min-h-[100px] w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm leading-6 outline-none focus:border-stone-700"
               />
             </label>
 
             <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-medium">
-                Profile picture URL
-              </span>
+              <span className="text-sm font-medium">Profile picture</span>
+
               <input
-                value={profile.avatar_url}
-                onChange={(e) =>
-                  setProfile((prev) => ({
-                    ...prev,
-                    avatar_url: e.target.value,
-                  }))
-                }
-                placeholder="Paste an image URL for now"
-                className="w-full rounded-2xl border border-stone-200 p-4 text-sm outline-none focus:border-stone-700"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadAvatar(file)
+                }}
+                className="w-full rounded-2xl border border-stone-200 bg-white p-4 text-sm outline-none focus:border-stone-700"
               />
+
+              {uploadingAvatar && (
+                <p className="text-sm text-stone-500">Uploading...</p>
+              )}
+
+              {profile.avatar_url && (
+                <p className="text-sm text-stone-500">
+                  Profile picture ready. Click Save profile to keep it.
+                </p>
+              )}
             </label>
           </div>
 
@@ -373,7 +432,9 @@ export default function ProfilePage() {
               W
             </div>
 
-            <h2 className="mt-5 text-xl font-semibold">Raw Journal Archive</h2>
+            <h2 className="mt-5 text-xl font-semibold">
+              Raw Journal Archive
+            </h2>
 
             <p className="mt-3 text-sm leading-7 text-stone-600">
               Download the full raw archive of your journal entries as a Word
@@ -396,7 +457,9 @@ export default function ProfilePage() {
               X
             </div>
 
-            <h2 className="mt-5 text-xl font-semibold">Decision Principles</h2>
+            <h2 className="mt-5 text-xl font-semibold">
+              Decision Principles
+            </h2>
 
             <p className="mt-3 text-sm leading-7 text-stone-600">
               Download the principles extracted from your entries as an Excel
